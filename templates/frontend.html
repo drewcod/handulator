@@ -5,27 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>3D Points with Three.js</title>
   <style>
-    body { margin: 0; display: flex; overflow: hidden; }
-    canvas { display: block; flex-grow: 1; }
-    #sidebar { width: 200px; background-color: #333; color: white; padding: 20px; display: flex; flex-direction: column; justify-content: space-around; align-items: center; }
-    #info { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial, sans-serif; background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 5px; }
-    .mini-object { margin: 10px; width: 50px; height: 50px; cursor: pointer; }
+    body {
+      margin: 0;
+      display: flex;
+      overflow: hidden;
+    }
+    
+    canvas {
+      display: block;
+      flex-grow: 1;
+    }
+
+    #sidebar {
+      width: 200px;
+      background-color: #333;
+      color: white;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      align-items: center;
+    }
+
+    #content {
+      margin-left: 250px; /* Adjust the content to fit beside the sidebar */
+      padding: 20px;
+      flex-grow: 1;
+    }
+
+    button {
+      background-color: #ffffff;
+      color: rgb(255, 255, 255);
+      height: 75px;
+      width: 75px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+
   </style>
 </head>
 <body>
-  <!-- Sidebar for object selection -->
+
   <div id="sidebar">
-    <div class="mini-object" id="mini-cube" onclick="selectObject('cube')"></div>
-    <div class="mini-object" id="mini-sphere" onclick="selectObject('sphere')"></div>
-    <div class="mini-object" id="mini-pyramid" onclick="selectObject('pyramid')"></div>
+    <div class="mini-object" id="mini-cube" onclick="makeCubeMesh(0x00FF00)"></div>
+    <div class="mini-object" id="mini-sphere" onclick="makeSphereMesh(0xFF0000)"></div>
+    <div class="mini-object" id="mini-pyramid" onclick="makePyramidMesh(0x0000FF)"></div>
+    <button id="clear">CLEAR</button>
   </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.3/socket.io.min.js"></script>
 
   <script>
-    const RED = 0xFF0000;
-    const GREEN = 0x00FF00;
-    const BLUE = 0x0000FF;
+
+    const shapes = [];
 
     // Set up the scene, camera, and renderer
     const scene = new THREE.Scene();
@@ -35,14 +73,42 @@
     document.body.appendChild(renderer.domElement);
 
     // Position the camera
-    camera.position.z = 50;
+    camera.position.z = 500;
 
     // Create a Socket.io client connection
     const socket = io.connect();
 
+    // other shapes
+    function makeSphereMesh(color) {
+      let new_sphere = new THREE.Mesh(new THREE.SphereGeometry(25, 32, 32), new THREE.MeshBasicMaterial({ color: color }));
+      shapes.push(new_sphere);
+      scene.add(new_sphere);
+      return new_sphere;
+    }
+    function makePyramidMesh(color) {
+        let new_pyramid = new THREE.Mesh(new THREE.ConeGeometry(25, 50, 4), new THREE.MeshBasicMaterial({ color: color }));
+        shapes.push(new_pyramid);
+        scene.add(new_pyramid);
+        return new_pyramid;
+    }
+    function makeCubeMesh(color) {
+        let new_cube = new THREE.Mesh(new THREE.BoxGeometry(50, 50, 50), new THREE.MeshBasicMaterial({ color: color }));
+        shapes.push(new_cube);
+        scene.add(new_cube);
+        return new_cube;
+    }
+    
+    // clear button
+    document.getElementById("clear").addEventListener("click", function() {
+      for (let i=0; i<shapes.length; i++) {
+        scene.remove(shapes[i]);
+      }
+      shapes = [];
+    });
+
     // Create a Points object for the points
     const points_geometry = new THREE.BufferGeometry();
-    const points_material = new THREE.PointsMaterial({ color: 0x00ff00, size: 5, sizeAttenuation:false });
+    const points_material = new THREE.PointsMaterial({ color: 0x00ff00, size: 10, sizeAttenuation:false });
     const points = new THREE.Points(points_geometry, points_material);
     scene.add(points);
 
@@ -52,102 +118,122 @@
     const line = new THREE.LineSegments(line_geometry, line_material)
     scene.add(line)
 
-    ////////////
+        // Updated updatePoints function in frontend.html
+    function updatePoints(data) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      let allPoints = [];
+      let allLinePoints = [];
 
-    // Create the blue (user) cube.
-    const userGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const userMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
-    const userShape = new THREE.Mesh(userGeometry, userMaterial);
-    scene.add(userShape);
-    // Dictionary to store meshes for the grabbable cubes (red or green).
-    const shapeMeshes = {};
-    // other shapes
-    function makeSphereMesh(color) {
-        return new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), new THREE.MeshBasicMaterial({ color: color }));
-    }
-    function makePyramidMesh(color) {
-        return new THREE.Mesh(new THREE.ConeGeometry(0.5, 1, 4), new THREE.MeshBasicMaterial({ color: color }));
-    }
-    function makeCubeMesh(color) {
-        return new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: color }));
-    }
+      // Check if multiple hands are detected
+      if (Array.isArray(data.frame_landmarks[0])) {
+        data.frame_landmarks.forEach(hand => {
+          let newPoints = hand.map(p => new THREE.Vector3(p[0] * w - w / 2, (1 - p[1]) * h - h / 2, p[2] * 500));
+          allPoints = allPoints.concat(newPoints);
+          // Create hand skeleton lines (assuming 21 points per hand)
+          let handLinePoints = [
+            newPoints[0], newPoints[1],
+            newPoints[0], newPoints[5],
+            newPoints[0], newPoints[17],
+            newPoints[5], newPoints[9],
+            newPoints[9], newPoints[13],
+            newPoints[13], newPoints[17],
+            newPoints[1], newPoints[2],
+            newPoints[2], newPoints[3],
+            newPoints[3], newPoints[4],
+            newPoints[5], newPoints[6],
+            newPoints[6], newPoints[7],
+            newPoints[7], newPoints[8],
+            newPoints[9], newPoints[10],
+            newPoints[10], newPoints[11],
+            newPoints[11], newPoints[12],
+            newPoints[13], newPoints[14],
+            newPoints[14], newPoints[15],
+            newPoints[15], newPoints[16],
+            newPoints[17], newPoints[18],
+            newPoints[18], newPoints[19],
+            newPoints[19], newPoints[20]
+          ];
+          allLinePoints = allLinePoints.concat(handLinePoints);
 
-    //UI code from Jaya
-
-    let stationaryData = null; 
-    socket.on('update_shapes', function(data) { 
-      // Update the user (blue) cube’s position. 
-      if (data.user) {
-        userShape.position.set(data.user[0], data.user[1], data.user[2]); 
-      }
-
-      // Process and update all shapes. 
-      const incomingIds = new Set(); 
-      data.shapes.forEach(shapeData => {
-        incomingIds.add(shapeData.id); 
-        let mesh; 
-        if (shapeData.shape === "sphere") {
-          mesh = makeSphereMesh(shapeData.color); 
-        } else if (shapeData.shape === "pyramid") { 
-          mesh = makePyramidMesh(shapeData.color); 
-        } else { 
-          mesh = makeCubeMesh(shapeData.color); 
-        } 
-        if (!(shapeData.id in shapeMeshes)) {
-            // Create a new mesh for this shape. 
-            shapeMeshes[shapeData.id] = mesh; 
-            scene.add(mesh); 
-          } // Update the mesh’s position and color. 
-          shapeMeshes[shapeData.id].position.set(shapeData.pos[0], shapeData.pos[1], shapeData.pos[2]); 
-          shapeMeshes[shapeData.id].material.color.set(shapeData.color); });
-
-          // Remove any meshes that are no longer present. 
-          Object.keys(shapeMeshes).forEach(id => { 
-            if (!incomingIds.has(parseInt(id))) { 
-              scene.remove(shapeMeshes[id]); 
-              delete shapeMeshes[id]; 
-            } 
-          });
-
-          // Save the stationary cube’s data (assuming it’s the first shape). 
-          if (data.shapes && data.shapes.length > 0) { 
-            stationaryData = data.shapes[0]; 
-          } 
+          // Process pinch gesture for this hand
+          const thumb = hand[4];
+          const pointer = hand[8];
+          const thumbPos = newPoints[4];
+          const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
+          if (dist < 0.1) {
+            for (let i = 0; i < shapes.length; i++) {
+              let cur = shapes[i];
+              const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
+              if (err < 100) {
+                cur.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+                break;
+              }
+            }
+          }
         });
+      } else {
+        // Single hand scenario (existing logic)
+        let newPoints = data.frame_landmarks.map(p => new THREE.Vector3(p[0] * w - w / 2, (1 - p[1]) * h - h / 2, p[2] * 500));
+        allPoints = newPoints;
+        allLinePoints = [
+          newPoints[0], newPoints[1],
+          newPoints[0], newPoints[5],
+          newPoints[0], newPoints[17],
+          newPoints[5], newPoints[9],
+          newPoints[9], newPoints[13],
+          newPoints[13], newPoints[17],
+          newPoints[1], newPoints[2],
+          newPoints[2], newPoints[3],
+          newPoints[3], newPoints[4],
+          newPoints[5], newPoints[6],
+          newPoints[6], newPoints[7],
+          newPoints[7], newPoints[8],
+          newPoints[9], newPoints[10],
+          newPoints[10], newPoints[11],
+          newPoints[11], newPoints[12],
+          newPoints[13], newPoints[14],
+          newPoints[14], newPoints[15],
+          newPoints[15], newPoints[16],
+          newPoints[17], newPoints[18],
+          newPoints[18], newPoints[19],
+          newPoints[19], newPoints[20]
+        ];
 
-    // Object selection function
-    function selectObject(objectType) { 
-      if (!stationaryData) { 
-        console.error("Stationary data is not available yet."); 
-        return; 
-      }
-
-      // Create a new mesh based on the current stationary cube's color. 
-      let newMesh;
-      if (objectType == 'cube') { 
-        newMesh = makeCubeMesh(GREEN); 
-        stationaryData.color = GREEN;
-      } else if (objectType == 'sphere') { 
-        newMesh = makeSphereMesh(RED); 
-        stationaryData.color = RED;
-      } else if (objectType == 'pyramid') { 
-        newMesh = makePyramidMesh(BLUE); 
-        stationaryData.color = BLUE;
-      }
-
-      // Optionally, if you want to immediately update the scene with the new mesh, // you could replace the existing stationary mesh in shapeMeshes[0]: 
-      if (0 in shapeMeshes) { 
-        scene.remove(shapeMeshes[0]); 
-        shapeMeshes[0] = newMesh; 
-        scene.add(newMesh); 
-      }
-
-      // Update the stored stationary data to include the new shape type.
-      stationaryData.shape = objectType;
-
-      // Emit the new shape type to the server. (Note: if your server only expects a string, // then you send just the objectType. Otherwise, you could send the full stationaryData.) 
-      socket.emit('changeStationary', stationaryData); 
+        // Process pinch gesture for single hand
+        const thumb = data.frame_landmarks[4];
+        const pointer = data.frame_landmarks[8];
+        const thumbPos = newPoints[4];
+        const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
+        if (dist < 0.1) {
+          for (let i = 0; i < shapes.length; i++) {
+            let cur = shapes[i];
+            const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
+            if (err < 100) {
+              cur.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+              break;
+            }
+          }
+        }
     }
+
+  points_geometry.setFromPoints(allPoints);
+  line_geometry.setFromPoints(allLinePoints);
+  }
+
+
+    // Listen for 'new_points' events from Flask server
+    socket.on('new_data', function(data) {
+      updatePoints(data);
+    });
+
+    // Animation loop to render the scene
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    animate();
 
     // Function to create miniatures for the sidebar
     function createMiniature(geometry, material) {
@@ -178,184 +264,6 @@
     document.getElementById('mini-pyramid').appendChild(createMiniature(new THREE.ConeGeometry(0.5, 1, 4), new THREE.MeshBasicMaterial({ color: 0x0000ff })));
 
 
-    // Utility function: return a material based on a cube’s color.
-    function getMaterial(color) {
-        return new THREE.MeshBasicMaterial({ color: color });
-    }
-
-    // Animation loop.
-    function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    }
-    animate();
-
-    // Listen for key events and emit actions to the server.
-    // Mapping: w: +y, s: -y, a: -x, d: +x, z: +z, x: -z, i: attach (keydown) / detach (keyup)
-    document.addEventListener('keydown', function(event) {
-      switch(event.key) {
-        case 'w':
-          socket.emit('move', { axis: 1, delta: 0.1 });
-          break;
-        case 's':
-          socket.emit('move', { axis: 1, delta: -0.1 });
-          break;
-        case 'a':
-          socket.emit('move', { axis: 0, delta: -0.1 });
-          break;
-        case 'd':
-          socket.emit('move', { axis: 0, delta: 0.1 });
-          break;
-        case 'z':
-          socket.emit('move', { axis: 2, delta: 0.1 });
-          break;
-        case 'x':
-          socket.emit('move', { axis: 2, delta: -0.1 });
-          break;
-        case 'i':
-          socket.emit('attach');
-          break;
-      }
-    });
-
-    document.addEventListener('keyup', function(event) {
-      if (event.key === 'i') {
-        socket.emit('detach');
-      }
-    });
-
-    // Adjust camera and renderer on window resize.
-    window.addEventListener('resize', function() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // Function to update the points in Three.js
-    function updatePoints(data) {
-
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      const scale = 0.1;
-
-      const newPoints = data.frame_landmarks.map(p => new THREE.Vector3((p[0]*w - w/2)*scale, ((1-p[1])*h - h/2)*scale, p[2]*500*scale));
-      points_geometry.setFromPoints(newPoints);
-
-      
-
-      // Create a line connecting the points
-      let linePoints = [newPoints[0], newPoints[1], // palm
-                        newPoints[0], newPoints[5],
-                        newPoints[0], newPoints[17],
-                        newPoints[5], newPoints[9],
-                        newPoints[9], newPoints[13],
-                        newPoints[13], newPoints[17],
-                        newPoints[1], newPoints[2], // thumb
-                        newPoints[2], newPoints[3],
-                        newPoints[3], newPoints[4],
-                        newPoints[5], newPoints[6], // pointer
-                        newPoints[6], newPoints[7],
-                        newPoints[7], newPoints[8],
-                        newPoints[9], newPoints[10], // middle
-                        newPoints[10], newPoints[11],
-                        newPoints[11], newPoints[12],
-                        newPoints[13], newPoints[14], //ring
-                        newPoints[14], newPoints[15],
-                        newPoints[15], newPoints[16],
-                        newPoints[17], newPoints[18], // pinky
-                        newPoints[18], newPoints[19],
-                        newPoints[19], newPoints[20],
-                      ]
-
-      // Update the line geometry with the new line points
-      line_geometry.setFromPoints(linePoints);
-
-      // move object if pinching
-      const thumb = data.frame_landmarks[4];
-      const pointer = data.frame_landmarks[8];
-      const m_pos = newPoints[4];
-
-      const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
-      const err = Math.abs(m_pos.x - cube.position.x) + Math.abs(m_pos.y - cube.position.y);
-
-      console.log(err);
-      if (dist < .1 && err < 100) {
-        grab = true;
-        cube.position.set(m_pos.x, m_pos.y, m_pos.z)
-      }
-
-    }
-
-    // Listen for 'new_points' events from Flask server
-    socket.on('new_data', function(data) {
-      updatePoints(data);
-      // if (data.user) {
-      //   userShape.position.set(data.user[0], data.user[1], data.user[2]); 
-      // }
-      // // Process and update all shapes.
-      // const incomingIds = new Set(); 
-      // data.shapes.forEach(shapeData => {
-      //   incomingIds.add(shapeData.id); 
-      //   let mesh; 
-      //   if (shapeData.shape === "sphere") {
-      //     mesh = makeSphereMesh(shapeData.color); 
-      //   } else if (shapeData.shape === "pyramid") { 
-      //     mesh = makePyramidMesh(shapeData.color); 
-      //   } else { 
-      //     mesh = makeCubeMesh(shapeData.color); 
-      //   } 
-      //   if (!(shapeData.id in shapeMeshes)) {
-      //     shapeMeshes[shapeData.id] = mesh; 
-      //     scene.add(mesh); 
-      //   }
-      //   shapeMeshes[shapeData.id].position.set(shapeData.pos[0], shapeData.pos[1], shapeData.pos[2]); 
-      //   shapeMeshes[shapeData.id].material.color.set(shapeData.color); 
-      //   });
-      // // Remove any meshes that are no longer present.
-      // Object.keys(shapeMeshes).forEach(id => { 
-      //   if (!incomingIds.has(parseInt(id))) { 
-      //     scene.remove(shapeMeshes[id]); 
-      //     delete shapeMeshes[id]; 
-      //   } 
-      // });
-      // if (data.shapes && data.shapes.length > 0) { 
-      //   stationaryData = data.shapes[0]; 
-      // } 
-    });
-    // Single animation loop.
-    function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    }
-    animate();
-
-    // Handle window resizing.
-    window.addEventListener("resize", () => {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-    });
-
-    // Animation loop to render the scene
-    function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    }
-
-    // Single animation loop.
-    function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    }
-    animate();
-
-    // Handle window resizing.
-    window.addEventListener("resize", () => {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-    });
-
     // Handle window resizing
     window.addEventListener('resize', () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -363,5 +271,12 @@
       camera.updateProjectionMatrix();
     });
   </script>
-</body>
-</html>
+
+  <!-- <div id="sidebar">
+    <h2>3D Object Creation</h2>
+    <button onclick="makeSphereMesh(0x00FF00)">Add Sphere</button>
+    <button onclick="makeCubeMesh(0xFF0000)">Add Cube</button>
+    <button onclick="makePyramidMesh(0x0000FF)">Add Pyramid</button>
+  </div> -->
+
+</body></html>
