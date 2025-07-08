@@ -64,6 +64,33 @@
   <script>
 
     let shapes = [];
+    let grabbedShape = null;
+
+    function handlePinch(thumb, pointer, thumbPos) {
+      const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
+      if (dist < 0.1) {
+        if (grabbedShape) {
+          grabbedShape.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+        } else {
+          let bestErr = Infinity;
+          let selected = null;
+          for (let i = 0; i < shapes.length; i++) {
+            const cur = shapes[i];
+            const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
+            if (err < bestErr) {
+              bestErr = err;
+              selected = cur;
+            }
+          }
+          if (selected && bestErr < 100) {
+            grabbedShape = selected;
+            grabbedShape.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+          }
+        }
+      } else {
+        grabbedShape = null;
+      }
+    }
 
     // Set up the scene, camera, and renderer
     const scene = new THREE.Scene();
@@ -160,22 +187,7 @@
           const thumb = hand[4];
           const pointer = hand[8];
           const thumbPos = newPoints[4];
-          const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
-            if (dist < 0.1) {
-              let selected = null;
-              let bestErr = Infinity;
-              for (let i = 0; i < shapes.length; i++) {
-                const cur = shapes[i];
-                const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
-                if (err < bestErr) {
-                  bestErr = err;
-                  selected = cur;
-                }
-              }
-              if (selected && bestErr < 100) {
-                selected.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
-              }
-            }
+          handlePinch(thumb, pointer, thumbPos);
         });
       } else {
         // Single hand scenario (existing logic)
@@ -209,22 +221,7 @@
         const thumb = data.frame_landmarks[4];
         const pointer = data.frame_landmarks[8];
         const thumbPos = newPoints[4];
-        const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
-        if (dist < 0.1) {
-          let selected = null;
-          let bestErr = Infinity;
-          for (let i = 0; i < shapes.length; i++) {
-            const cur = shapes[i];
-            const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
-            if (err < bestErr) {
-              bestErr = err;
-              selected = cur;
-            }
-          }
-          if (selected && bestErr < 100) {
-            selected.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
-          }
-        }
+        handlePinch(thumb, pointer, thumbPos);
     }
 
   points_geometry.setFromPoints(allPoints);
