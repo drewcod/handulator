@@ -214,6 +214,7 @@
         const thumbPos = newPoints[4];
         const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
         if (dist < 0.1) {
+
           if (!grabbedShape) {
             for (let i = 0; i < shapes.length; i++) {
               const cur = shapes[i];
