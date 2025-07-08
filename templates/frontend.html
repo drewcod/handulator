@@ -64,7 +64,6 @@
   <script>
 
     let shapes = [];
-    let grabbedShape = null;
 
     // Set up the scene, camera, and renderer
     const scene = new THREE.Scene();
@@ -162,23 +161,20 @@
           const pointer = hand[8];
           const thumbPos = newPoints[4];
           const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
-          if (dist < 0.1) {
-            if (!grabbedShape) {
+            if (dist < 0.1) {
+              let selected = null;
+              let bestErr = Infinity;
               for (let i = 0; i < shapes.length; i++) {
                 const cur = shapes[i];
                 const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
-                if (err < 100) {
-                  grabbedShape = cur;
-                  break;
+                if (err < bestErr) {
+                  bestErr = err;
+                  selected = cur;
                 }
               }
-            }
-            if (grabbedShape) {
-              grabbedShape.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
-            }
-          } else {
-            grabbedShape = null;
-          }
+              if (selected && bestErr < 100) {
+                selected.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+              }
         });
       } else {
         // Single hand scenario (existing logic)
@@ -214,22 +210,19 @@
         const thumbPos = newPoints[4];
         const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
         if (dist < 0.1) {
-
-          if (!grabbedShape) {
-            for (let i = 0; i < shapes.length; i++) {
-              const cur = shapes[i];
-              const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
-              if (err < 100) {
-                grabbedShape = cur;
-                break;
-              }
+          let selected = null;
+          let bestErr = Infinity;
+          for (let i = 0; i < shapes.length; i++) {
+            const cur = shapes[i];
+            const err = Math.abs(thumbPos.x - cur.position.x) + Math.abs(thumbPos.y - cur.position.y);
+            if (err < bestErr) {
+              bestErr = err;
+              selected = cur;
             }
           }
-          if (grabbedShape) {
-            grabbedShape.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+          if (selected && bestErr < 100) {
+            selected.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
           }
-        } else {
-          grabbedShape = null;
         }
     }
 
