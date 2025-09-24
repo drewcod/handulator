@@ -35,11 +35,11 @@
 
     button {
       background-color: #ffffff;
-      color: rgb(255, 255, 255);
       height: 75px;
       width: 75px;
       padding: 10px;
       margin-bottom: 10px;
+      color: rgb(123, 123, 123);
     }
 
     button:hover {
@@ -65,12 +65,52 @@
 
     let shapes = [];
     let grabbedShape = null;
+    let grabState = null;
 
-    function handlePinch(thumb, pointer, thumbPos) {
+    function getYawPitchRoll(matrix) {
+      const clamp = (v) => Math.max(-1, Math.min(1, v));
+      const yaw = Math.atan2(matrix[0][2], matrix[2][2]);
+      const pitch = Math.asin(-clamp(matrix[1][2]));
+      const roll = Math.atan2(matrix[1][0], matrix[1][1]);
+      return { yaw, pitch, roll };
+    }
+
+    function normalizeAngle(theta) {
+      while (theta > Math.PI) theta -= 2 * Math.PI;
+      while (theta < -Math.PI) theta += 2 * Math.PI;
+      return theta;
+    }
+
+    function handlePinch(thumb, pointer, thumbPos, rotation) {
       const dist = Math.abs(thumb[0] - pointer[0]) + Math.abs(thumb[1] - pointer[1]);
-      if (dist < 0.1) {
-        if (grabbedShape) {
+      if (!rotation) {
+        if (dist < 0.1 && grabbedShape) {
           grabbedShape.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+        } else if (dist >= 0.1) {
+          grabbedShape = null;
+          grabState = null;
+        }
+        return;
+      }
+      const { roll } = getYawPitchRoll(rotation);
+      if (dist < 0.1) {
+        if (grabbedShape && grabState) {
+          grabbedShape.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+          const rollDelta = normalizeAngle(roll - grabState.initialRoll);
+          const scaleFactor = Math.exp(rollDelta * 0.5);
+          const minScale = 0.2;
+          const maxScale = 5;
+          const baseScale = grabState.baseScale;
+          const baseMin = Math.min(baseScale.x, baseScale.y, baseScale.z);
+          const baseMax = Math.max(baseScale.x, baseScale.y, baseScale.z);
+          const clampMin = minScale / (baseMax || minScale);
+          const clampMax = maxScale / (baseMin || maxScale);
+          const clampedFactor = THREE.MathUtils.clamp(scaleFactor, clampMin, clampMax);
+          grabbedShape.scale.set(
+            baseScale.x * clampedFactor,
+            baseScale.y * clampedFactor,
+            baseScale.z * clampedFactor
+          );
         } else {
           let bestErr = Infinity;
           let selected = null;
@@ -85,10 +125,15 @@
           if (selected && bestErr < 100) {
             grabbedShape = selected;
             grabbedShape.position.set(thumbPos.x, thumbPos.y, thumbPos.z);
+            grabState = {
+              initialRoll: roll,
+              baseScale: grabbedShape.scale.clone()
+            };
           }
         }
       } else {
         grabbedShape = null;
+        grabState = null;
       }
     }
 
@@ -145,20 +190,27 @@
     const line = new THREE.LineSegments(line_geometry, line_material)
     scene.add(line)
 
-        // Updated updatePoints function in frontend.html
-    function updatePoints(data) {
+    
+    function updatePoints(payload) {
+      const landmarks = payload.frame_landmarks || [];
+      const rotations = payload.rotation_matrices || [];
+      if (!landmarks.length) {
+        points_geometry.setFromPoints([]);
+        line_geometry.setFromPoints([]);
+        grabbedShape = null;
+        grabState = null;
+        return;
+      }
       const w = window.innerWidth;
       const h = window.innerHeight;
       let allPoints = [];
       let allLinePoints = [];
 
-      // Check if multiple hands are detected
-      if (Array.isArray(data.frame_landmarks[0])) {
-        data.frame_landmarks.forEach(hand => {
-          let newPoints = hand.map(p => new THREE.Vector3(p[0] * w - w / 2, (1 - p[1]) * h - h / 2, p[2] * 500));
+      if (Array.isArray(landmarks[0][0])) {
+        landmarks.forEach((hand, idx) => {
+          const newPoints = hand.map(p => new THREE.Vector3(p[0] * w - w / 2, (1 - p[1]) * h - h / 2, p[2] * 500));
           allPoints = allPoints.concat(newPoints);
-          // Create hand skeleton lines (assuming 21 points per hand)
-          let handLinePoints = [
+          const handLinePoints = [
             newPoints[0], newPoints[1],
             newPoints[0], newPoints[5],
             newPoints[0], newPoints[17],
@@ -183,15 +235,13 @@
           ];
           allLinePoints = allLinePoints.concat(handLinePoints);
 
-          // Process pinch gesture for this hand
           const thumb = hand[4];
           const pointer = hand[8];
           const thumbPos = newPoints[4];
-          handlePinch(thumb, pointer, thumbPos);
+          handlePinch(thumb, pointer, thumbPos, rotations[idx] || null);
         });
       } else {
-        // Single hand scenario (existing logic)
-        let newPoints = data.frame_landmarks.map(p => new THREE.Vector3(p[0] * w - w / 2, (1 - p[1]) * h - h / 2, p[2] * 500));
+        const newPoints = landmarks.map(p => new THREE.Vector3(p[0] * w - w / 2, (1 - p[1]) * h - h / 2, p[2] * 500));
         allPoints = newPoints;
         allLinePoints = [
           newPoints[0], newPoints[1],
@@ -217,16 +267,15 @@
           newPoints[19], newPoints[20]
         ];
 
-        // Process pinch gesture for single hand
-        const thumb = data.frame_landmarks[4];
-        const pointer = data.frame_landmarks[8];
+        const thumb = landmarks[4];
+        const pointer = landmarks[8];
         const thumbPos = newPoints[4];
-        handlePinch(thumb, pointer, thumbPos);
-    }
+        handlePinch(thumb, pointer, thumbPos, rotations[0] || null);
+      }
 
-  points_geometry.setFromPoints(allPoints);
-  line_geometry.setFromPoints(allLinePoints);
-  }
+      points_geometry.setFromPoints(allPoints);
+      line_geometry.setFromPoints(allLinePoints);
+    }
 
 
     // Listen for 'new_points' events from Flask server
@@ -287,3 +336,4 @@
   </div> -->
 
 </body></html>
+
